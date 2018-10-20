@@ -1,4 +1,5 @@
 #include <ae.h>
+#include <sys/select.h>
 
 aeEventLoop *aeEventLoopCreate(void){
     aeEventLoop *eventLoop;
@@ -19,7 +20,30 @@ void *aeEventLoopDelete(aeEventLoop *eventLoop){
     zfree(eventLoop);
 }
 
-void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags);
+void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags){
+    fd_set rfds, wfds, efds;
+
+    aeFileEvent *fe;
+    aeTimeEvent *te;
+    
+    fe = eventLoop->fileEvent;
+    FD_ZERO(&rfds);
+    FD_ZERO(&wfds);
+    FD_ZERO(&efds);
+    while(fe){
+        if(fe->mask & AE_READABLE)
+            FD_SET(fe->fd, &rfds);
+        if(fe->mask & AE_WRITABLE)
+            FD_SET(fe->fd, &wfds);
+        if(fe->mask & AE_EXCEPTION)
+            FD_SET(fe->fd, &efds);
+        fe = fe->next;
+    }
+
+   
+
+
+
 void *aeEventLoopMain(aeEventLoop *eventLoop);
 
 void *aeWait(aeEventLoop *eventLoop);

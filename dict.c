@@ -95,9 +95,31 @@ static int dictGenericDelete(dict *ht, const void *key, int nofree){
 }
     
 
-int dictDelete(dict *ht, const void *key);
-int dictDeleteNoFree(dict *ht, const void *key);
-void dictRelease(dict *ht);
+int dictDelete(dict *ht, const void *key){
+    return dictGenericDelete(ht, key, 0);
+}
+
+int dictDeleteNoFree(dict *ht, const void *key){
+    return dictGenericDelete(ht, key, 0);
+}
+
+void dictRelease(dict *ht){
+    dictEntry *he, *heNext;
+    while(int i=0; i<=ht->size && ht->used>0; i++){
+        he = ht->table[i];
+        while(he){
+            heNext = he->next;
+            dictFreeEntryKey(ht, he);
+            dictFreeEntryVal(ht, he);
+            zfree(he);
+            he = heNext;
+        }
+        zfree(ht->table);
+        zfree(ht);
+    }
+    return DICT_OK;
+}
+
 
 dictEntry *dictFind(dict *ht, const void *key){
     dictEntry he;
@@ -122,14 +144,37 @@ dictIterator *dictGetIterator(dict *ht){
 }
 
 dictEntry *dictNext(dictIterator *iter){
-    if(iter->entry == NULL){
-        iter->index++;
-        iter->entry = iter->ht->table[iter->index];
+    while(1){
+        if(iter->entry == NULL){
+            iter->index++;
+            if (it->index > ht->size)
+                return NULL;
+            iter->entry = iter->ht->table[iter->index];
+        }else{
+            it->entry = it->entry->next;
+        }
+        if(it->entry)
+            return it->entry;
+    }
+}
 
-void dictReleaseIterator(dictIterator *iter);
+void dictReleaseIterator(dictIterator *iter){
+    zfree(iter);
+}
+
 dictEntry *dictGetRandomKey(dict *ht);
 void dictPrintStats(dict *ht);
-unsigned int dictGenHashFunction(const unsigned char *buf, int len);
+
+unsigned int dictGenHashFunction(const unsigned char *buf, int len){
+    unsigned int hash = 5381;
+
+    // hash*33 +c
+    while(len--)
+        hash = ((hash<<5) + hash) + (*buf++);
+    return hash;
+}
+
+
 void dictEmpty(dict *ht);
 
 // private func

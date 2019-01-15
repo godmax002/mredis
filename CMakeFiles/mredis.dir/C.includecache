@@ -1,0 +1,46 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/Users/gmax/src/my/mredis/adlist.h
+
+/Users/gmax/src/my/mredis/ae.h
+
+/Users/gmax/src/my/mredis/anet.h
+
+/Users/gmax/src/my/mredis/dict.h
+
+/Users/gmax/src/my/mredis/redis.c
+dict.h
+/Users/gmax/src/my/mredis/dict.h
+adlist.h
+/Users/gmax/src/my/mredis/adlist.h
+sds.h
+/Users/gmax/src/my/mredis/sds.h
+ae.h
+/Users/gmax/src/my/mredis/ae.h
+anet.h
+/Users/gmax/src/my/mredis/anet.h
+zmalloc.h
+/Users/gmax/src/my/mredis/zmalloc.h
+time.h
+-
+errno.h
+-
+signal.h
+-
+stdio.h
+-
+
+/Users/gmax/src/my/mredis/sds.h
+time.h
+-
+
+/Users/gmax/src/my/mredis/zmalloc.h
+stddef.h
+-
+

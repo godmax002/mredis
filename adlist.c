@@ -1,8 +1,9 @@
 #include "zmalloc.h"
+#include "adlist.h"
 
 list *listCreate(void){
     list *p;
-    p = zcalloc(sizeof(struct list));
+    p = zmalloc(sizeof(struct list));
     return p;
 }
 
@@ -16,7 +17,7 @@ list *listDup(list *orig){
     copy->free = orig->free;
     copy->match = orig->match;
     
-    iter = listGetIter(list, ITER_FORWARD);
+    iter = listGetIter(orig, ITER_FORWARD);
     while((node=listNextElement(iter)) != NULL){
         void *node_copy;
         if(copy->dup){
@@ -24,7 +25,7 @@ list *listDup(list *orig){
         }else{
             node_copy = node->value;
         }
-        listNodeAddTail(list, node_copy);
+        listNodeAddTail(copy, node_copy);
     }
     listReleaseIter(iter);
     return copy;
@@ -45,30 +46,30 @@ void listRelease(list *list){
 
 list *listNodeAddHead(list *list, void *value){
     listNode *node;
-    node = zcalloc(sizeof(listNode));
+    node = zmalloc(sizeof(listNode));
     node->next = list->head;
     node->value = value;
-    if(list->len == 0)
+    if(list->length == 0)
         list->tail = node;
     else
         list->head->next = node;
     list->head = node;
-    list->len++;
+    list->length++;
     return list;
 }
 
 
 list *listNodeAddTail(list *list, void *value){
     listNode *node;
-    node = zcalloc(sizeof(listNode));
+    node = zmalloc(sizeof(listNode));
     node->prev = list->tail;
     node->value = value;
-    if(list->len == 0 )
+    if(list->length == 0 )
         list->head = node;
     else
         list->tail->next = node;
     list->tail = node;
-    list->len++;
+    list->length++;
     return list;
 }
 
@@ -84,13 +85,13 @@ void listDelNode(list *list, listNode *node){
 
     if(list->free)list->free(node->value);
     zfree(node);
-    list->len--;
+    list->length--;
 }
 
 listIter *listGetIter(list *list, int direction) {
     listIter *iter;
     iter = zmalloc(sizeof(listIter));
-    if(direction = ITER_FORWARD){
+    if(direction == ITER_FORWARD){
         iter->next = list->head;
     }else{
         iter->next = list->tail;
@@ -104,7 +105,7 @@ void listReleaseIter(listIter *iter){
 }
 
 listNode *listNextElement(listIter *iter){
-    void *next;
+    listNode *next;
     if(iter->next){
         next = iter->next;
         iter->prev = next;
@@ -146,7 +147,7 @@ listNode *listIndex(list *list, int index){
                 node = node->next;
         }else{
             node = list->tail;
-            if(index++) == 0
+            if(index++ == 0)
                 return node;
             else
                 node = node->prev;

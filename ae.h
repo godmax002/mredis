@@ -2,9 +2,9 @@
 #define AE_H
 struct aeEventLoop;
 
-typedef void aeFileEventProc(aeEventLoop *eventLoop, int fd, void *clientData, int mask);
-typedef void aeTimeEventProc(aeEventLoop *eventLoop, long long id, void *clientData);
-typedef void aeEventFinalizerProc(aeEventLoop *eventLoop,  void *clientData);
+typedef void aeFileEventProc(struct aeEventLoop *eventLoop, int fd, void *clientData, int mask);
+typedef void aeTimeEventProc(struct aeEventLoop *eventLoop, long long id, void *clientData);
+typedef void aeEventFinalizerProc(struct aeEventLoop *eventLoop,  void *clientData);
 
 typedef struct aeFileEvent {
     int fd;
@@ -12,18 +12,18 @@ typedef struct aeFileEvent {
     aeFileEventProc *fileProc;
     aeEventFinalizerProc *finalizerProc;
     void *clientData;
-    aeFileEvent *next;
+    struct aeFileEvent *next;
 } aeFileEvent;
 
 
 typedef struct aeTimeEvent {
     long long id;
     long when_sec;
-    long when_ms;
+    long when_msec;
     aeTimeEventProc *timeProc;
     aeEventFinalizerProc *finalizerProc;
     void *clientData;
-    aeTimeEvent *next;
+    struct aeTimeEvent *next;
 } aeTimeEvent;
 
 typedef struct aeEventLoop {
@@ -49,16 +49,16 @@ typedef struct aeEventLoop {
 #define AE_NO_MORE -1
 
 #define AE_NOTUSED(V) ((void) V)
-aeEventLoop *aeEventLoopCreate(void);
+aeEventLoop *aeCreateEventLoop(void);
 void *aeEventLoopStop(aeEventLoop *eventLoop);
 void *aeEventLoopDelete(aeEventLoop *eventLoop);
 void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags);
-void *aeEventLoopMain(aeEventLoop *eventLoop);
+void *aeMain(aeEventLoop *eventLoop);
 
 void *aeWait(aeEventLoop *eventLoop);
 int aeCreateFileEvent(aeEventLoop *eventLoop, aeFileEvent *fileEvent);
 void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask);
-int aeCreateTimeEvent(aeEventLoop *eventLoop, aeFileEvent *timeEvent);
+int aeCreateTimeEvent(aeEventLoop *eventLoop, aeTimeEvent *timeEvent);
 void aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id);
 #endif
 

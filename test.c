@@ -1,7 +1,7 @@
 # include <stdio.h>
 # include <string.h>
 # include "zmalloc.h"
-int main(int argc, char *argv[]) {
+int mmain(int argc, char *argv[]) {
     char* ptr;
     size_t size_2 = 2;
     

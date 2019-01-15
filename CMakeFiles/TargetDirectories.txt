@@ -1,0 +1,3 @@
+/Users/gmax/src/my/mredis/CMakeFiles/rebuild_cache.dir
+/Users/gmax/src/my/mredis/CMakeFiles/edit_cache.dir
+/Users/gmax/src/my/mredis/CMakeFiles/mredis.dir

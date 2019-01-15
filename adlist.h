@@ -1,14 +1,14 @@
 #ifndef ADLIST_H
 #define ADLIST_H
 typedef struct listNode {
-    adListNode *prev;
-    adListNode *next;
+    struct listNode *prev;
+    struct listNode *next;
     void       *value;
 } listNode;
 
 typedef struct list {
-    adListNode *head;
-    adListNode *tail;
+    listNode *head;
+    listNode *tail;
     int         length;
     void        (*free)(void *ptr);
     void        *(*dup)(void *ptr);

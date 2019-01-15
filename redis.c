@@ -1,4 +1,49 @@
-typedef void redisCommandProc(redisClient *c);
+# include "dict.h"
+# include "adlist.h"
+# include "sds.h"
+# include "ae.h"
+# include "anet.h"
+# include "zmalloc.h"
+# include <time.h>
+# include <errno.h>
+# include <signal.h>
+# include <stdio.h>
+
+
+# define REDIS_MAX_ARGS 16
+# define REDIS_CMD_BULK 1
+# define REDIS_CMD_INLINE 2
+# define REDIS_DEBUG 0
+# define REDIS_NOTICE 1
+# define REDIS_WARNING 2
+# define REDIS_MAXIDLETIME (60*5)
+# define REDIS_DEFAULT_DBNUM 16
+// replication
+# define REDIS_REPL_NONE 0
+# define REDIS_REPL_CONNECT 1
+# define REDIS_REPL_CONNECTED 2
+
+# define ANET_ERR_LEN 1024
+# define REDIS_CONFIGLINE_MAX 1024
+# define REDIS_QUERYBUF_LEN 1024
+# define REDIS_NOTUSED(v) ((void) v)
+// type
+# define REDIS_STRING 0
+# define REDIS_LIST 1
+# define REDIS_SET 2
+# define REDIS_HASH 3
+# define REDIS_OK 0 
+# define REDIS_OK -1 
+
+
+typedef struct redisObj {
+    int type;
+    void *ptr;
+    int refcount;
+} robj;
+struct redisClient;
+
+typedef void redisCommandProc(struct redisClient *c);
 struct redisCommand {
     char *name;
     redisCommandProc *proc;
@@ -220,19 +265,21 @@ static void initServerConfig() {
     server.masterhost = NULL;
     server.masterport = 6379;
     server.master = NULL;
-    server.replstate = REDIS_REP_NONE;
+    server.replstate = REDIS_REPL_NONE;
 }
 
 // todo: not finished
 static void loadServerConfig(char *filename) {
     char *fp  = open(filename, "r");
-    char buf[REDIS_CONFIGLINE_MAX+1];
+    char buf[REDIS_CONFIGLINE_MAX+1], *err;
     sds line = NULL;
+    int linenum = 0;
 
     while(fgets(buf, REDIS_CONFIGLINE_MAX+1, fp) != NULL){
         sds *argv;
         int argc;
 
+        linenum++;
         line = sdsnew(buf);
         line = sdstrim(line, "\t\r\n");
 
@@ -290,6 +337,13 @@ static void loadServerConfig(char *filename) {
             }
         }
     }
+
+    loaderr:
+    fprintf(stderr, "\n*** FATAL CONFIG FILE ERROR ***\n");
+    fprintf(stderr, "Reading the configuration file, at line %d\n", linenum);
+    fprintf(stderr, ">>> '%s'\n", line);
+    fprintf(stderr, "%s\n", err);
+    exit(1);
 }
 
 // hash type : todo
@@ -349,8 +403,8 @@ again:
             argv = sdssplitlen(query, sdslen(query), " ", 1, &argc);
             sdsfree(query);
             for(int i = 0; i < argc && i < REDIS_MAX_ARGS; i++) {
-                if(sdslen(arv[i])){
-                    c->arv[c->argc] = createObject(REDIS_STRING, argv[i]);
+                if(sdslen(argv[i])){
+                    c->argv[c->argc] = createObject(REDIS_STRING, argv[i]);
                     c->argc++;
                 }else
                     sdsfree(argv[i]);
@@ -375,19 +429,16 @@ again:
         }
     }
 }
-                    
 
-
-
-        
-
-
-    
-
-
+static void acceptHandler(aeEventLoop *el, int fd, void *privData, int mask){
+    char buf[100];
+    printf("file event %d \n", fd);
+    read(fd, buf, 100);
+    printf("file content %s \n", buf);
+}
 
 static int selectDb(redisClient *c, int id){
-    c->dict = server.dict[id];
+    c->dict = &server.dict[id];
     c->dictid = id;
     return REDIS_OK;
 }
@@ -411,7 +462,13 @@ static redisClient *createClient(int fd){
     c->lastinteraction = time(NULL);
     c->flags = 0;
 
-    aeCreateFileEvent(server.el, c->fd, AE_READABLE, readQueryFromClient, c, NULL);
+    aeFileEvent fe;
+    fe.fd = c->fd;
+    fe.mask = AE_READABLE;
+    fe.fileProc = readQueryFromClient;
+    fe.finalizerProc = NULL;
+    fe.clientData = c;
+    aeCreateFileEvent(server.el, &fe);
     listAddNodeTail(server.clients, c);
     return c;
 }
@@ -424,7 +481,7 @@ static void initServer() {
     server.fd = anetTcpServer(server.neterr, server.port, server.bindaddr);
     server.dict = zmalloc(sizeof(dict*) * server.dbnum);
     for(int i=0; i<server.dbnum; i++){
-        server.dict[i] = dictCreate(&hashDictType, NULL);
+        // server.dict[i] = dictCreate(&hashDictType, NULL);
     }
     server.clients = listCreate();
     server.slaves = listCreate();
@@ -440,14 +497,22 @@ static void initServer() {
 
     server.stat_starttime = time(NULL);
     server.stat_numcommands = 0 ;
-    serverstat_numconnections = 0 ;
+    server.stat_numconnections = 0 ;
 }
 
 int main(int argc, char **argv) {
     initServerConfig();
     // loadServerConfig();
     initServer();
-    aeCreateFileEvent(server.el, server.fd, AE_READABLE, acceptHandler, NULL, NULL);
+    aeFileEvent fe;
+    fe.fd = server.fd;
+    fe.mask = AE_READABLE;
+    fe.fileProc = acceptHandler;
+    fe.finalizerProc = NULL;
+    fe.clientData = NULL;
+    aeCreateFileEvent(server.el, &fe);
+    printf("hello4");
+    fflush(stdout);
     aeMain(server.el);
 }
 

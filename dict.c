@@ -1,9 +1,17 @@
 // api
-dict *dictCreate(dictType *type, void *privDataPtr){
+
+#include "dict.h"
+#include <stddef.h>
+#include <assert.h>
+
+static unsigned int _dictNextPower(unsigned int size);
+static int _dictKeyIndex(dict *ht, const void *key);
+
+dict *dictCreate(dictType *type, void *privData){
     dict *d;
-    d = zcalloc(sizeof(struct dict));
+    d = zmalloc(sizeof(struct dict));
     d->type = type;
-    d->privDataPtr = privDataPtr;
+    d->privData = privData;
     return d;
 }
 
@@ -13,15 +21,15 @@ int dictExpand(dict *ht, unsigned int size){
     if (ht->used > size)
         return DICT_ERR;
     n.type = ht->type;
-    n.privdata = ht->privdata;
+    n.privData = ht->privData;
     n.size = realsize;
     n.sizemask = realsize - 1;
-    n.table = zcallc(realsize*sizeof(dictEntry*));
-    n.usde = ht->used;
+    n.table = zmalloc(realsize*sizeof(dictEntry*));
+    n.used = ht->used;
 
     // recalculate index and move data
     for(int i=0; i<ht->size && ht->used > 0; i++){
-        dictEntry *he = ht->table[i], heNext;
+        dictEntry *he = ht->table[i], *heNext;
         if(he == NULL) continue;
 
         while(he){
@@ -45,9 +53,9 @@ int dictAdd(dict *ht, void *key, void *value){
     int index;
     dictEntry *entry;
 
-    entry = zcalloc(sizeof(struct dictEntry));
+    entry = zmalloc(sizeof(struct dictEntry));
     dictSetHashKey(ht, entry, key);
-    dictSetHashValue(ht, entry, value);
+    dictSetHashVal(ht, entry, value);
 
     index = _dictKeyIndex(ht, key);
     entry->next = ht->table[index];
@@ -61,13 +69,13 @@ int dictReplace(dict *ht, void *key, void *value){
         return DICT_OK;
     dictEntry *he;
     he = dictFind(ht, key);
-    dictFreeEntryVal(ht, entry);
-    dictSetEntryVal(ht, entry, value);
+    dictFreeEntryVal(ht, he);
+    dictSetHashVal(ht, he, value);
     return DICT_OK;
 }
 
 static int dictGenericDelete(dict *ht, const void *key, int nofree){
-    dictEntry he, hePrev;
+    dictEntry *he, *hePrev;
     unsigned int keyHash;
 
     keyHash = dictHashKey(ht, key) & ht->sizemask;
@@ -76,13 +84,13 @@ static int dictGenericDelete(dict *ht, const void *key, int nofree){
 
     while(he){
         if(dictCompareHashKey(ht, key, he->key)){
-            if(he->prev)
-                he->prev->next = he->next;
+            if(hePrev)
+                hePrev->next = he->next;
             else
                 ht->table[keyHash] = he->next;
             if(!nofree){
                 dictFreeEntryKey(ht, he);
-                dictFreeEntrtyVal(ht, he);
+                dictFreeEntryVal(ht, he);
             }
             zfree(he);
             ht->used--;
@@ -105,7 +113,7 @@ int dictDeleteNoFree(dict *ht, const void *key){
 
 void dictRelease(dict *ht){
     dictEntry *he, *heNext;
-    while(int i=0; i<=ht->size && ht->used>0; i++){
+    for(int i=0; i<=ht->size && ht->used>0; i++){
         he = ht->table[i];
         while(he){
             heNext = he->next;
@@ -117,12 +125,11 @@ void dictRelease(dict *ht){
         zfree(ht->table);
         zfree(ht);
     }
-    return DICT_OK;
 }
 
 
 dictEntry *dictFind(dict *ht, const void *key){
-    dictEntry he;
+    dictEntry *he;
     unsigned int keyHash;
 
     keyHash = dictHashKey(ht, key) & ht->sizemask;
@@ -138,7 +145,7 @@ dictEntry *dictFind(dict *ht, const void *key){
 
 dictIterator *dictGetIterator(dict *ht){
     dictIterator *iter;
-    iter = zcalloc(sizeof(dictIterator));
+    iter = zmalloc(sizeof(dictIterator));
     iter->index = -1;
     return iter;
 }
@@ -147,14 +154,14 @@ dictEntry *dictNext(dictIterator *iter){
     while(1){
         if(iter->entry == NULL){
             iter->index++;
-            if (it->index > ht->size)
+            if (iter->index > iter->ht->size)
                 return NULL;
             iter->entry = iter->ht->table[iter->index];
         }else{
-            it->entry = it->entry->next;
+            iter->entry = iter->entry->next;
         }
-        if(it->entry)
-            return it->entry;
+        if(iter->entry)
+            return iter->entry;
     }
 }
 
@@ -198,7 +205,7 @@ static unsigned int _dictNextPower(unsigned int size){
 
 static int _dictKeyIndex(dict *ht, const void *key){
     unsigned int keyHash;
-    dictEntry he;
+    dictEntry *he;
 
     // expand
     if(_dictExpandIfNeeded(ht) == DICT_ERR)

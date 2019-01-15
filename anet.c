@@ -1,3 +1,30 @@
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <stddef.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <string.h>
+#include <stdio.h>
+
+#include "anet.h"
+
+# define ANET_CONNECT_NONE 0
+# define ANET_CONNECT_NONBLOCK 1
+
+
+static void anetSetError(char *err, const char *fmt, ...){
+    va_list ap;
+    if(!err) return;
+    va_start(ap, fmt);
+    vsnprintf(err, ANET_ERR_LEN, fmt, ap);
+    va_end(ap);
+}
+
 static int anetTcpGenericConnect(char *err, char *addr, int port, int flags){
     int s, on_opt = 1;
 
@@ -5,14 +32,12 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags){
         anetSetError(err, "creating socket:%s\n", strerror(errno));
         return ANET_ERR;
     }
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on_opt, sizeof(on_opt));
 
     struct sockaddr_in sa;
     sa.sin_family = AF_INET;
     sa.sin_port = port;
-    char ip[32];
-    anetResolve(err, addr, &ip);
-    sa.sin_addr = inet_aton(&ip);
+    anetResolve(err, addr, &sa.sin_addr);
 
     if(flags & ANET_CONNECT_NONBLOCK){
         if(anetNonBlock(err, s)!= ANET_OK){
@@ -25,7 +50,7 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags){
                 flags & ANET_CONNECT_NONBLOCK)
             return s;
         
-        anetSetError(err, "connect: %s\n", strerr(errno));
+        anetSetError(err, "connect: %s\n", strerror(errno));
         close(s);
         return ANET_ERR;
     }
@@ -69,12 +94,12 @@ int anetWrite(int fd, void *buf, int count){
 int anetResolve(char *err, char *host, char *ipbuf){
     struct sockaddr_in sa;
 
-    if(inet_aton(addr, &sa.sin_addr) == 0){
+    if(inet_aton(host, &sa.sin_addr) == 0){
         // by hostname
         struct hostent *he;
-        he = gethostbyname(addr);
+        he = gethostbyname(host);
         if(he == NULL){
-            anetSetError(err, "can't resolve: %s\n", addr);
+            anetSetError(err, "can't resolve: %s\n", host);
             return ANET_ERR;
         }
         memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
@@ -84,7 +109,7 @@ int anetResolve(char *err, char *host, char *ipbuf){
 }
 
 int anetTcpServer(char *err, int port, char *bindaddr){
-    int s;
+    int s, on=1;
     struct sockaddr_in sa;
 
     if((s = socket(AF_INET, SOCK_STREAM, 0)) == -1){
@@ -130,12 +155,43 @@ int anetAccept(char *err, int serversock, char *ip, int *port){
             if(errno == EINTR)
                 continue;
             else{
+            }
+        }
+    }
+}
 
 
 
-int anetNonBlock(char *err, int fd);
-int anetTcpNoDelay(char *err, int fd);
-int anetTcpKeepAlive(char *err, int fd);
+int anetNonBlock(char *err, int fd){
+    int flags;
+    if((flags = fcntl(fd, F_GETFL)) == -1){
+        anetSetError(err, "fcnctl(F_GETFL): %s\n", strerror(errno));
+        return ANET_ERR;
+    }
+    if((flags = fcntl(fd, F_SETFL, flags | O_NONBLOCK)) == -1){
+        anetSetError(err, "fcntl(F_SETFL): %s\n", strerror(errno));
+        return ANET_ERR;
+    }
+    return ANET_OK;
+}
+
+int anetTcpNoDelay(char *err, int fd){
+    int yes = 1;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1){
+        anetSetError(err, "setsockopt TCP_NODELAY: %s\n", strerror(errno));
+        return ANET_ERR;
+    }
+    return ANET_OK;
+}
+
+int anetTcpKeepAlive(char *err, int fd){
+    int yes = 1;
+    if(setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes)) == -1){
+        anetSetError(err, "sotsockopt SO_KEEPALIVE: %s\n", strerror(errno));
+        return ANET_ERR;
+    }
+    return ANET_OK;
+}
 
 
     

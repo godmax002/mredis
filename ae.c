@@ -1,12 +1,19 @@
-#include <ae.h>
+#include "ae.h"
 #include <sys/select.h>
+#include <stddef.h>
+#include <time.h>
+#include <stdio.h>
+#include "zmalloc.h"
+#include <errno.h>
 
-aeEventLoop *aeEventLoopCreate(void){
+aeEventLoop *aeCreateEventLoop(void){
     aeEventLoop *eventLoop;
     
-    eventLoop = zmalloc(sizof(aeEventLoop));
-    eventLoop->aeFileEvent = NULL;
-    eventLoop->aeTimeEvent = NULL;
+    eventLoop = zmalloc(sizeof(*eventLoop));
+    if(!eventLoop) return NULL;
+    fflush(stdout);
+    eventLoop->fileEvent = NULL;
+    eventLoop->timeEvent = NULL;
     eventLoop->timeEventNextId = 0;
     eventLoop->stop = 0;
     return eventLoop;
@@ -19,6 +26,8 @@ void *aeEventLoopStop(aeEventLoop *eventLoop){
 void *aeEventLoopDelete(aeEventLoop *eventLoop){
     zfree(eventLoop);
 }
+
+static aeTimeEvent *aeFindNearestTimeEvent(aeEventLoop *eventLoop);
 
 void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags){
     int maxfd = 0 ;
@@ -43,7 +52,7 @@ void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags){
     }
 
     // get timeval of nearest timeEvent
-    timeval tvNear, tvNow;
+    struct timeval tvNear, tvNow;
     aeTimeEvent *nearTE;
     nearTE = aeFindNearestTimeEvent(eventLoop);
     if(nearTE){
@@ -70,8 +79,14 @@ void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags){
     // find FileEvent of ready fd, then process
     // no need to delete the fileEvent after process
     int select_ret;
+    tvNear.tv_sec = 1;
     select_ret = select(maxfd + 1, &rfds, &wfds, &efds, &tvNear);
-    if(select_ret){
+    printf("select %d \n", select_ret);
+    fflush(stdout);
+    if(select_ret == -1)
+        printf("select error %s\n", strerror(errno));
+    if(select_ret > 0){
+        printf("select ok %d\n", select_ret);
         fe = eventLoop->fileEvent;
         while(fe){
             if((FD_ISSET(fe->fd, &rfds) && (fe->mask & AE_READABLE)) ||
@@ -85,11 +100,11 @@ void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags){
                 if(FD_ISSET(fe->fd, &efds) && (fe->mask & AE_EXCEPTION))
                     mask |= AE_EXCEPTION;
 
-                fe->fileProc(eventLoop, fe->fd, fe->data, mask);
+                fe->fileProc(eventLoop, fe->fd, fe->clientData, mask);
                 fe = eventLoop->fileEvent;
-                FD_CLR(&rfds);
-                FD_CLR(&wfds);
-                FD_CLR(&efds);
+                FD_CLR(fe->fd, &rfds);
+                FD_CLR(fe->fd, &wfds);
+                FD_CLR(fe->fd, &efds);
             }else{
                 fe = fe->next;
             }
@@ -111,7 +126,7 @@ void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags){
        gettimeofday(&tvNow);
        if(te->when_sec > tvNow.tv_sec || 
                (te->when_sec == tvNow.tv_sec && 
-                te->when_msec * 1000 >= tvNow.tv_use_)){
+                te->when_msec * 1000 >= tvNow.tv_usec)){
            te->timeProc(eventLoop, te->id, te->clientData);
            aeDeleteTimeEvent(eventLoop, te->id);
            te = eventLoop->timeEvent;
@@ -122,30 +137,32 @@ void *aeEventLoopProcess(aeEventLoop *eventLoop, int flags){
 }
 
 
-void *aeEventLoopMain(aeEventLoop *eventLoop){
+void *aeMain(aeEventLoop *eventLoop){
     eventLoop->stop = 0;
     while(!eventLoop->stop)
         aeEventLoopProcess(eventLoop, AE_ALLEVENT);
 }
 
 void *aeWait(aeEventLoop *eventLoop);
+
 int aeCreateFileEvent(aeEventLoop *eventLoop, aeFileEvent *fileEvent){
-    filEvent->next = eventLoop->fileEvent;
-    eventLoop->filEvent = fileEvent;
+    fileEvent->next = eventLoop->fileEvent;
+    eventLoop->fileEvent = fileEvent;
     return AE_OK;
 }
+
 void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask){
-    FileEvent *prev, *cur;
+    aeFileEvent *prev, *cur;
 
     prev = NULL;
-    cur = eventLoop->fileEevent;
+    cur = eventLoop->fileEvent;
 
     while(cur){
         if(cur->fd == fd && cur->mask == mask){
             if(prev)
                 prev->next = cur->next;
             else
-                eventLoop->next = cur->next;
+                eventLoop->fileEvent->next = cur->next;
 
             if(cur->finalizerProc)
                cur->finalizerProc(eventLoop, cur->clientData); 
@@ -160,7 +177,7 @@ void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask){
 
 
 
-int aeCreateTimeEvent(aeEventLoop *eventLoop, aeFileEvent *timeEvent){
+int aeCreateTimeEvent(aeEventLoop *eventLoop, aeTimeEvent *timeEvent){
     timeEvent->id = eventLoop->timeEventNextId++;
 
     timeEvent->next = eventLoop->timeEvent;
@@ -170,17 +187,17 @@ int aeCreateTimeEvent(aeEventLoop *eventLoop, aeFileEvent *timeEvent){
 
 
 void aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id){
-    FileEvent *prev, *cur;
+    aeTimeEvent *prev, *cur;
 
     prev = NULL;
-    cur = eventLoop->fileEevent;
+    cur = eventLoop->fileEvent;
 
     while(cur){
         if(cur->id == id ){
             if(prev)
                 prev->next = cur->next;
             else
-                eventLoop->next = cur->next;
+                eventLoop->timeEvent->next = cur->next;
 
             if(cur->finalizerProc)
                cur->finalizerProc(eventLoop, cur->clientData); 
@@ -191,5 +208,19 @@ void aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id){
         prev = cur;
         cur = cur->next;
     }
+}
+
+static aeTimeEvent *aeFindNearestTimeEvent(aeEventLoop *eventLoop){
+    aeTimeEvent *te = eventLoop->timeEvent;
+    aeTimeEvent *nearest = NULL;
+
+    while(te){
+        if(!nearest || nearest->when_sec > te->when_sec ||
+                (nearest->when_sec == te->when_sec &&
+                 nearest->when_msec > te->when_msec))
+            nearest = te;
+        te = te->next;
+    }
+    return nearest;
 }
 

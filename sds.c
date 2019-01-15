@@ -1,5 +1,8 @@
 # include "sds.h"
 # include "zmalloc.h"
+# include <stdarg.h>
+# include <stdio.h>
+# include <stdlib.h>
 
 sds     sdsnewlen(const void* init, size_t initlen) {
     struct sdshdr*  sh;
@@ -19,7 +22,7 @@ sds     sdsnewlen(const void* init, size_t initlen) {
 
 sds     sdsnew(const char* init) {
     size_t initlen = (init == NULL) ? 0 : strlen(init);
-    return sdsnewlen(init, intlen);
+    return sdsnewlen(init, initlen);
 }
 
 sds     sdsempty(){
@@ -31,15 +34,15 @@ void    sdsfree(sds s) {
     zfree(s-sizeof(struct sdshdr));
 }
 
-size_t  sdslen(const sds s);{
-    struct sdshdr sh;
-    sh = s - sizeof(struct sdshdr);
+size_t  sdslen(const sds s){
+    struct sdshdr *sh;
+    sh = (void *)(s - sizeof(struct sdshdr));
     return sh->len;
 }
 
 size_t  sdsavail(const sds s){
-    struct sdshdr sh;
-    sh = s - sizeof(struct sdshdr);
+    struct sdshdr *sh;
+    sh = (void *)(s - sizeof(struct sdshdr));
     return sh->free;
 }
 
@@ -73,7 +76,7 @@ sds     sdscatlen(sds s, void* t, size_t len){
     sdsMakeRoom(s, len);
     if(s == NULL) return NULL;
     memcpy(s+sdslen(s), t, len);
-    sh = s - sizeof(struct sds);
+    sh = s - sizeof(sds);
     sh->len = sh->len + len;
     sh->free = sh->free -len;
     s[sh->len] = '\0';
@@ -98,7 +101,7 @@ sds     sdscatprintf(sds s, const char* fmt, ...){
         buf[buf_size - 2] = '\0';
 
         va_start(ap, fmt);
-        vsnpfrintf(buf, buflen, fmt, ap);
+        vsnprintf(buf, buf_size, fmt, ap);
         va_end(ap);
 
         if(buf[buf_size - 2] != '\0'){
@@ -120,7 +123,7 @@ sds     sdscpylen(sds s, char* t, size_t len){
     struct sdshdr *sh;
 
     if(sdsavail(s) + sdslen(s) < len)
-        s = sdsMakeRoom(s, len - sdsavail(s) - sdslen(s))
+        s = sdsMakeRoom(s, len - sdsavail(s) - sdslen(s));
     memcpy(s, t, len);
     s[len] = '\0';
     sh = s - sizeof(struct sdshdr);
@@ -135,7 +138,7 @@ sds     sdscpy(sds s, char* t){
 
 
 sds     sdstrim(sds s, const char* cset){
-    sdshdr *sh;
+    struct sdshdr *sh;
     char *sp, *ep, *start, *end;
     int fnl_len; 
 
@@ -152,22 +155,22 @@ sds     sdstrim(sds s, const char* cset){
     s[fnl_len] = '\0';
     sh->free = sh->free + sh->len - fnl_len;
     sh->len = fnl_len;
-    return sds;
+    return sh;
 }
 
 
 void    sdsupdatelen(sds s) {
-    sdshdr *sh;
+    struct sdshdr *sh;
     size_t real_len;
     
-    sh = s - sizeof(struct sds);
+    sh = s - sizeof(sds);
     real_len = strlen(s);
     sh->free = sh->len + sh->free - real_len;
     sh->len = real_len;
 }
 
 sds     sdsrange(sds s, long start, long end){
-    return sdscpy(sds, s + start, end - start + 1);
+    return sdscpylen(s, s + start, end - start + 1);
 }
 
 int     sdscmp(sds s1, sds s2) {
@@ -177,7 +180,7 @@ int     sdscmp(sds s1, sds s2) {
     sp1 = s1;
     sp2 = s2;
     while(1){
-        diff = *sp1 - *sp2
+        diff = *sp1 - *sp2;
         if(*sp1 == '\0' || *sp2 == '\0' || diff != 0) return diff;
         sp1++;
         sp2++;
@@ -202,7 +205,7 @@ sds*    sdssplitlen(char *s, int len, char *sep, int seplen, int* count){
             return sds_start;
         }
         else{
-            *sds_ptr = sdsnew(s, ptr-s);
+            *sds_ptr = sdsnewlen(s, char_ptr-s);
             s = char_ptr + seplen;
             used_slots += 1;
             if(used_slots > cur_slots){
